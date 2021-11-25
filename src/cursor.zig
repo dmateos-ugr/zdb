@@ -41,6 +41,7 @@ pub const Cursor = struct {
     pub fn close(self: *Cursor) !void {
         self.statement.closeCursor() catch |err| {
             var errors = try self.statement.getErrors(self.allocator);
+            defer self.allocator.free(errors);
             for (errors) |e| {
                 // InvalidCursorState just means that no cursor was open on the statement. Here, we just want to
                 // ignore this error and pretend everything succeeded.

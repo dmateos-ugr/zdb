@@ -51,9 +51,8 @@ pub const Cursor = struct {
         };
     }
 
-    /// Execute a SQL statement and return the result set. SQL query parameters can be passed with the `parameters` argument. 
-    /// This is the fastest way to execute a SQL statement once.
-    pub fn executeDirect(self: *Cursor, comptime ResultType: type, parameters: anytype, sql_statement: []const u8) !ResultSet(ResultType) {
+    /// Same as `executeDirect`, but ignore the result set.
+    pub fn executeDirectNoResult(self: *Cursor, parameters: anytype, sql_statement: []const u8) !void {
         var num_params: usize = 0;
         for (sql_statement) |c| {
             if (c == '?') num_params += 1;
@@ -61,29 +60,15 @@ pub const Cursor = struct {
 
         if (num_params != parameters.len) return error.InvalidNumParams;
 
-        self.clearParameters();
-        self.parameters = try ParameterBucket.init(self.allocator, num_params);
-        defer {
-            self.parameters.?.deinit();
-            self.parameters = null;
-        }
-
-        inline for (parameters) |param, index| {
-            const stored_param = try self.parameters.?.addParameter(index, param);
-            const sql_param = sql_parameter.default(param);
-            try self.statement.bindParameter(
-                @intCast(u16, index + 1), 
-                .Input, 
-                sql_param.c_type, 
-                sql_param.sql_type, 
-                stored_param.param, 
-                sql_param.precision, 
-                stored_param.indicator,
-            );
-        }
+        try self.bindParameters(parameters);
 
         _ = try self.statement.executeDirect(sql_statement);
+    }
 
+    /// Execute a SQL statement and return the result set. SQL query parameters can be passed with the `parameters` argument. 
+    /// This is the fastest way to execute a SQL statement once.
+    pub fn executeDirect(self: *Cursor, comptime ResultType: type, parameters: anytype, sql_statement: []const u8) !ResultSet(ResultType) {
+        try self.executeDirectNoResult(parameters, sql_statement);
         return try ResultSet(ResultType).init(self.allocator, self.statement, 10);
     }
 
@@ -214,8 +199,9 @@ pub const Cursor = struct {
             self.parameters = try ParameterBucket.init(self.allocator, parameters.len);
         }
 
-        inline for (parameters) |param, index| {
-            try self.bindParameter(index + 1, param);
+        comptime var index = 0;
+        inline while (index < parameters.len) : (index += 1) {
+            try self.bindParameter(index + 1, parameters[index]);
         }
     }
     

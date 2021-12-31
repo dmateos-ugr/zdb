@@ -204,6 +204,29 @@ fn RowBindingResultSet(comptime Base: type) type {
 
             while (true) {
                 if (self.current_row >= self.rows_fetched) {
+                    // BUG: somewhow fetch() was writing into a slice of the ResultSet,
+                    // allocated at FetchResult(Base).toTarget. It was solved changing
+                    // from GeneralPurposeAllocator to page allocator.
+
+                    // Stacktrace:
+                    // [#0] 0x7ffff792d4da → bcoSetScrollFlds()
+                    // [#1] 0x7ffff792cd12 → bcoSQLScroll()
+                    // [#2] 0x7ffff792bd99 → bcoSQLFetch()
+                    // [#3] 0x7ffff7961d04 → SQLFetch()
+                    // [#4] 0x7ffff7f6d102 → SQLFetch(statement_handle=0x39f180)
+                    // [#5] 0x224e8c → .zdb.odbc.statement.Statement.fetch(self=0x7fffffffd4c8)
+                    // [#6] 0x2307a6 → .zdb.result_set.RowBindingResultSet(Playlist).next(self=0x7fffffffd488)
+                    // [#7] 0x22ea0f → .zdb.result_set.RowBindingResultSet(Playlist).getAllRows(self=0x7fffffffd488)
+                    // [#8] 0x22e08d → sql.query(statement={
+                    //   ptr = 0x204e14 <__unnamed_1496> "SELECT * FROM playlists_crea WHERE nick = ?",
+                    //   len = 0x2b
+                    // }, params={
+                    //   0 = {
+                    //     ptr = 0x2052e4 <__unnamed_1351> "benito69",
+                    //     len = 0x8
+                    //   }
+                    // })
+                    // [#9] 0x22d998 → listarPlaylists(nick=<optimized out>)
                     self.statement.fetch() catch |err| switch (err) {
                         error.NoData => return null,
                         else => return err

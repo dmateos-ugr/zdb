@@ -16,7 +16,6 @@ const Table = catalog_types.Table;
 const TablePrivileges = catalog_types.TablePrivileges;
 
 pub const Cursor = struct {
-
     parameters: ?ParameterBucket = null,
 
     connection: Connection,
@@ -172,17 +171,17 @@ pub const Cursor = struct {
 
     /// Bind a single value to a SQL parameter. If `self.parameters` is `null`, this does nothing
     /// and does not return an error. Parameter indices start at 1.
-    pub fn bindParameter(self: *Cursor, index: usize, parameter: anytype) !void {
+    fn bindParameter(self: *Cursor, index: usize, parameter: anytype) !void {
         if (self.parameters) |*params| {
-            const stored_param = try params.addParameter(index - 1, parameter);
+            const stored_param = params.getParamPointers(index);
             const sql_param = sql_parameter.default(parameter);
             try self.statement.bindParameter(
-                @intCast(u16, index), 
-                .Input, 
-                sql_param.c_type, 
-                sql_param.sql_type, 
-                stored_param.param, 
-                sql_param.precision, 
+                @intCast(u16, index + 1),
+                .Input,
+                sql_param.c_type,
+                sql_param.sql_type,
+                stored_param.param,
+                sql_param.precision,
                 stored_param.indicator,
             );
         }
@@ -195,16 +194,22 @@ pub const Cursor = struct {
     /// will not re-initialize them.
     pub fn bindParameters(self: *Cursor, parameters: anytype) !void {
         self.clearParameters();
-        if (parameters.len > 0) {
-            self.parameters = try ParameterBucket.init(self.allocator, parameters.len);
-        }
+        if (parameters.len == 0) return;
+        self.parameters = try ParameterBucket.init(self.allocator, parameters.len);
 
+        // Add every parameter to the parameter bucket
         comptime var index = 0;
         inline while (index < parameters.len) : (index += 1) {
-            try self.bindParameter(index + 1, parameters[index]);
+            try self.parameters.?.addParameter(index, parameters[index]);
+        }
+
+        // Bind each parameter
+        index = 0;
+        inline while (index < parameters.len) : (index += 1) {
+            try self.bindParameter(index, parameters[index]);
         }
     }
-    
+
     /// Deinitialize any parameters allocated on this statement (if any), and reset `self.parameters` to null.
     fn clearParameters(self: *Cursor) void {
         if (self.parameters) |*p| p.deinit();
@@ -214,7 +219,4 @@ pub const Cursor = struct {
     pub fn getErrors(self: *Cursor) []odbc.Error.DiagnosticRecord {
         return self.statement.getDiagnosticRecords(self.allocator) catch return &[_]odbc.Error.DiagnosticRecord{};
     }
-
-
-
 };

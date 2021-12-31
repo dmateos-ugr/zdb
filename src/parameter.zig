@@ -43,7 +43,7 @@ pub const ParameterBucket = struct {
     };
 
     data: std.ArrayListAlignedUnmanaged(u8, null),
-    param_indices: std.ArrayListUnmanaged(usize),
+    data_indices: std.ArrayListUnmanaged(usize),
     indicators: []c_longlong,
 
     allocator: *Allocator,
@@ -52,24 +52,24 @@ pub const ParameterBucket = struct {
         return ParameterBucket{
             .allocator = allocator,
             .data = try std.ArrayListAlignedUnmanaged(u8, null).initCapacity(allocator, num_params * 8),
-            .param_indices = try std.ArrayListUnmanaged(usize).initCapacity(allocator, num_params),
-            .indicators = try allocator.alloc(c_longlong, num_params)
+            .data_indices = try std.ArrayListUnmanaged(usize).initCapacity(allocator, num_params),
+            .indicators = try allocator.alloc(c_longlong, num_params),
         };
     }
 
     pub fn deinit(self: *ParameterBucket) void {
         self.data.deinit(self.allocator);
-        self.param_indices.deinit(self.allocator);
+        self.data_indices.deinit(self.allocator);
         self.allocator.free(self.indicators);
     }
 
     /// Insert a parameter into the bucker at the given index. Old parameter data at the
     /// old index won't be overwritten, but old indicator values will be overwritten.
-    pub fn addParameter(self: *ParameterBucket, index: usize, param: anytype) !Param {
+    pub fn addParameter(self: *ParameterBucket, index: usize, param: anytype) !void {
         const ParamType = EraseComptime(@TypeOf(param));
 
-        const param_index = self.data.items.len;
-        try self.param_indices.append(self.allocator, param_index);
+        const data_index = self.data.items.len;
+        try self.data_indices.append(self.allocator, data_index);
 
         if (comptime std.meta.trait.isZigString(ParamType)) {
             try self.data.appendSlice(self.allocator, param);
@@ -78,10 +78,12 @@ pub const ParameterBucket = struct {
             try self.data.appendSlice(self.allocator, std.mem.toBytes(@as(ParamType, param))[0..]);
             self.indicators[index] = @sizeOf(ParamType);
         }
-        
-        return Param{
-            .param = @ptrCast(*c_void, &self.data.items[param_index]),
-            .indicator = &self.indicators[index]
+    }
+
+    pub fn getParamPointers(self: *ParameterBucket, index: usize) Param {
+        return .{
+            .param = @ptrCast(*c_void, &self.data.items[self.data_indices.items[index]]),
+            .indicator = &self.indicators[index],
         };
     }
 };
@@ -105,7 +107,7 @@ test "SqlParameter string" {
 
     try std.testing.expect(param.precision == null);
     try std.testing.expectEqualStrings("some string", param.value);
-    try std.testing.expectEqual(*const [11:0] u8, @TypeOf(param.value));
+    try std.testing.expectEqual(*const [11:0]u8, @TypeOf(param.value));
     try std.testing.expectEqual(CType.Char, param.c_type);
     try std.testing.expectEqual(SqlType.Varchar, param.sql_type);
 }
@@ -137,4 +139,3 @@ test "add string parameter to ParameterBucket" {
     const param_data = @ptrCast([*]u8, param.param)[0..@intCast(usize, param.indicator.*)];
     try std.testing.expectEqualStrings(param_value, param_data);
 }
-

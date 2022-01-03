@@ -1,3 +1,3 @@
 [submodule "zig-odbc"]
 	path = zig-odbc
-	url = https://github.com/mjoerussell/zig-odbc.git
+	url = https://github.com/dmateos-ugr/zig-odbc

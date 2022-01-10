@@ -81,9 +81,14 @@ pub const ParameterBucket = struct {
     }
 
     pub fn getParamPointers(self: *ParameterBucket, index: usize) Param {
+        const len_ptr = &self.indicators[index];
+        const ptr = if (len_ptr.* > 0)
+            @ptrCast(*c_void, &self.data.items[self.data_indices.items[index]])
+        else
+            @ptrCast(*c_void, self.data.items.ptr);
         return .{
-            .param = @ptrCast(*c_void, &self.data.items[self.data_indices.items[index]]),
-            .indicator = &self.indicators[index],
+            .param = ptr,
+            .indicator = len_ptr,
         };
     }
 };
